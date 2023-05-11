@@ -1,0 +1,121 @@
+"""
+'send_receive.py'
+=========================================
+Sends incrementing values to feeds and subscribes to them
+
+Author(s): Brent Rubell, Todd Treece for Adafruit Industries
+"""
+# Import standard python modules
+import sys
+import time
+
+# Import Adafruit IO REST client and MQTTClient
+from Adafruit_IO import Client, Feed, MQTTClient
+
+# Set to your Adafruit IO key and username.
+ADAFRUIT_IO_KEY = "aio_rOLs319BUUrMzr87OICWzNTp8Zo1"
+ADAFRUIT_IO_USERNAME = "PabloFig"
+
+# Set the ID of the feeds to send and subscribe to for updates.
+TEMP_FEED_ID = "temperatura"
+GAS_FEED_ID = "gasolina"
+TEMPVAR_FEED_ID = "temperaturavar"
+GASVAR_FEED_ID = "gasolinavar"
+
+# Create an instance of the REST client.
+aio = Client(ADAFRUIT_IO_USERNAME, ADAFRUIT_IO_KEY)
+
+# Create feeds if they don't exist
+try:
+    aio.feeds(TEMP_FEED_ID)
+except:
+    feed = Feed(name=TEMP_FEED_ID)
+    aio.create_feed(feed)
+
+try:
+    aio.feeds(GAS_FEED_ID)
+except:
+    feed = Feed(name=GAS_FEED_ID)
+    aio.create_feed(feed)
+    
+try:
+    aio.feeds(TEMPVAR_FEED_ID)
+except:
+    feed = Feed(name=TEMPVAR_FEED_ID)
+    aio.create_feed(feed)
+
+try:
+    aio.feeds(GASVAR_FEED_ID)
+except:
+    feed = Feed(name=GASVAR_FEED_ID)
+    aio.create_feed(feed)
+    
+# Variables to hold the count for the feeds
+temp_count = 0
+gas_count = 0
+
+# Define callback functions for the MQTT client.
+def connected(client):
+    print("Subscribing to Feed {0}".format(TEMP_FEED_ID))
+    client.subscribe(TEMP_FEED_ID)
+    print("Subscribing to Feed {0}".format(GAS_FEED_ID))
+    client.subscribe(GAS_FEED_ID)
+    print("Waiting for feed data...")
+    
+    # Subscribe to changes on a feedVAR
+    print('Subscribing to Feed {0}'.format(TEMPVAR_FEED_ID))
+    client.subscribe(TEMPVAR_FEED_ID)
+    print('Waiting for feed data...')
+    print('Subscribing to Feed {0}'.format(GASVAR_FEED_ID))
+    client.subscribe(GASVAR_FEED_ID)
+    print('Waiting for feed data...')
+
+
+def disconnected(client):
+    sys.exit(1)
+
+def message(client, feed_id, payload):
+    print("Feed {0} received new value: {1}".format(feed_id, payload))
+    
+# Create an MQTT client instance.
+mqtt_client = MQTTClient(ADAFRUIT_IO_USERNAME, ADAFRUIT_IO_KEY)
+
+# Setup the callback functions defined above.
+mqtt_client.on_connect = connected
+mqtt_client.on_disconnect = disconnected
+mqtt_client.on_message = message
+
+# Connect to the Adafruit IO server.
+mqtt_client.connect()
+
+# Start the MQTT client's background thread to listen for messages.
+mqtt_client.loop_background()
+
+veri_temp_prev = int(aio.receive(TEMPVAR_FEED_ID).value)
+veri_gas_prev = int(aio.receive(GASVAR_FEED_ID).value) 
+
+
+while True:
+    veri_temp_act = int(aio.receive(TEMPVAR_FEED_ID).value)
+    veri_gas_act = int(aio.receive(GASVAR_FEED_ID).value)    
+    print("value gas input: ", veri_gas_act)
+    print("value temp input: ", veri_temp_act)
+    
+    if veri_temp_act != veri_temp_prev:
+        temp_count = veri_temp_act
+        veri_temp_prev = veri_temp_act
+    if veri_gas_act != veri_gas_prev:
+        gas_count = veri_gas_act
+        veri_gas_prev = veri_gas_act
+    
+    print("Sending temperature status: ", temp_count)
+    aio.send_data(TEMP_FEED_ID, temp_count)
+    temp_count += 1
+
+    print("Sending gas status: ", gas_count)
+    aio.send_data(GAS_FEED_ID, gas_count)
+    gas_count -= 1
+
+    # Adafruit IO is rate-limited for publishing,
+    # so we'll need a delay for calls to aio.send_data()
+    time.sleep(5)
